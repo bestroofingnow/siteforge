@@ -1,79 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { INDUSTRY_DEFAULTS, generateDefaultConfig, generateTestimonials } from '@/lib/website-templates';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface SiteData {
+interface SiteConfig {
   businessName?: string;
   tagline?: string;
   industry?: string;
-  services?: string[];
+  services?: Array<{ name: string; description: string; icon: string }>;
   phone?: string;
   email?: string;
   address?: string;
+  city?: string;
+  state?: string;
   primaryColor?: string;
-  style?: string;
+  accentColor?: string;
   heroHeadline?: string;
   heroSubheadline?: string;
   aboutText?: string;
+  yearsInBusiness?: number;
+  trustBadges?: Array<{ icon: string; text: string }>;
+  testimonials?: Array<{ name: string; text: string; rating: number }>;
+  faqs?: Array<{ question: string; answer: string }>;
+  ctaHeadline?: string;
+  ctaSubheadline?: string;
 }
 
-const SYSTEM_PROMPT = `You are SiteForge AI, a friendly and professional website building assistant. Your goal is to help users create beautiful, professional websites for their businesses through natural conversation.
+const SYSTEM_PROMPT = `You are SiteForge AI, an expert website builder assistant. You help users create professional business websites through natural conversation.
 
-IMPORTANT INSTRUCTIONS:
-1. Be conversational, warm, and encouraging
-2. Ask ONE question at a time to gather information naturally
-3. Extract business details through friendly dialogue
-4. When you have enough information, generate creative content (headlines, taglines, about text)
-5. Suggest improvements and offer design choices
+Your goal is to gather information about their business and generate a complete, professional website.
 
 CONVERSATION FLOW:
-1. First, ask about their business name and what they do
-2. Then ask about their services/offerings
-3. Ask about their contact information (phone, email, location)
-4. Discuss design preferences (colors, style)
-5. Generate creative content based on their input
+1. Ask about business name, type/industry, and location
+2. Ask about their services (what they offer)
+3. Ask about contact info (phone, email)
+4. Generate the complete website content
 
-RESPONSE FORMAT:
-Always respond with valid JSON in this exact format:
+IMPORTANT:
+- Be conversational and friendly
+- Ask 1-2 questions at a time
+- When you have enough info, generate ALL content at once
+- Create professional, SEO-optimized copy
+
+RESPONSE FORMAT (JSON):
 {
-  "message": "Your conversational response here",
-  "siteData": {
-    "businessName": "extracted or null",
-    "tagline": "generated or null",
-    "industry": "extracted or null",
-    "services": ["service1", "service2"] or null,
-    "phone": "extracted or null",
-    "email": "extracted or null",
-    "address": "extracted or null",
-    "primaryColor": "#hex or null",
-    "style": "modern/classic/bold/minimal or null",
-    "heroHeadline": "generated or null",
-    "heroSubheadline": "generated or null",
-    "aboutText": "generated or null"
+  "message": "Your response to the user",
+  "siteConfig": {
+    // Only include fields you're updating
+    "businessName": "string",
+    "industry": "roofing|landscaping|plumbing|hvac|cleaning|etc",
+    "city": "string",
+    "state": "string",
+    "services": [{"name": "string", "description": "string", "icon": "string"}],
+    "phone": "string",
+    "email": "string",
+    "primaryColor": "#hex",
+    "accentColor": "#hex",
+    "heroHeadline": "string",
+    "heroSubheadline": "string",
+    "aboutText": "string",
+    "tagline": "string",
+    "trustBadges": [{"icon": "star|shield|award|clock", "text": "string"}],
+    "testimonials": [{"name": "string", "text": "string", "rating": 5}],
+    "ctaHeadline": "string",
+    "ctaSubheadline": "string"
   },
-  "suggestions": ["suggestion 1", "suggestion 2"]
-}
-
-Only include fields in siteData that you've extracted or generated. Use null for unknown fields.
-Generate creative, professional copy when you have enough context.
-For primaryColor, suggest colors that match the industry (blue for trust, green for eco, orange for energy, etc.)`;
+  "stage": "gathering|generating|complete",
+  "suggestions": ["suggestion1", "suggestion2"]
+}`;
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, currentSiteData }: { messages: Message[]; currentSiteData: SiteData } = await request.json();
+    const { messages, currentSiteConfig }: { messages: Message[]; currentSiteConfig: SiteConfig } = await request.json();
 
-    // Check for API key
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
-      // Demo mode - simulate AI responses
-      return NextResponse.json(simulateResponse(messages, currentSiteData));
+      // Demo mode with intelligent simulation
+      return NextResponse.json(simulateResponse(messages, currentSiteConfig));
     }
 
-    // Real API call to Claude
+    // Real API call
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -83,12 +93,15 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: SYSTEM_PROMPT,
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
+        messages: [
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
+          {
+            role: 'user',
+            content: `Current site config: ${JSON.stringify(currentSiteConfig)}`,
+          },
+        ],
       }),
     });
 
@@ -99,266 +112,347 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     const content = data.content[0].text;
 
-    // Parse the JSON response
     try {
-      const parsed = JSON.parse(content);
-      return NextResponse.json(parsed);
+      return NextResponse.json(JSON.parse(content));
     } catch {
-      // If not valid JSON, wrap the response
       return NextResponse.json({
         message: content,
-        siteData: {},
+        siteConfig: {},
+        stage: 'gathering',
         suggestions: [],
       });
     }
   } catch (error) {
     console.error('Chat API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to process message' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to process message' }, { status: 500 });
   }
 }
 
-// Demo mode simulation
-function simulateResponse(messages: Message[], currentSiteData: SiteData) {
+function simulateResponse(messages: Message[], currentConfig: SiteConfig) {
   const lastMessage = messages[messages.length - 1]?.content.toLowerCase() || '';
-  const messageCount = messages.filter((m) => m.role === 'user').length;
+  const userMessageCount = messages.filter((m) => m.role === 'user').length;
 
-  // Simulate conversation flow
-  if (messageCount === 1) {
-    // First message - extract business info
-    const businessName = extractBusinessName(lastMessage);
-    const industry = extractIndustry(lastMessage);
+  // Extract information from user message
+  const extractedInfo = extractInfo(lastMessage, currentConfig);
+
+  // Determine conversation stage
+  const hasBusinessName = currentConfig.businessName || extractedInfo.businessName;
+  const hasIndustry = currentConfig.industry || extractedInfo.industry;
+  const hasServices = currentConfig.services?.length || extractedInfo.extractedServices?.length;
+  const hasContact = currentConfig.phone || extractedInfo.phone;
+
+  // Stage 1: Get business basics
+  if (!hasBusinessName || !hasIndustry) {
+    const businessName = extractedInfo.businessName;
+    const industry = extractedInfo.industry;
+    const city = extractedInfo.city;
+
+    if (businessName && industry) {
+      const defaults = INDUSTRY_DEFAULTS[industry] || INDUSTRY_DEFAULTS.roofing;
+      return {
+        message: `Great! ${businessName} sounds like a fantastic ${industry} business${city ? ` in ${city}` : ''}! I'm already building your website.
+
+What services do you offer? I can suggest some common ones for ${industry} businesses, or you can tell me your specific offerings.`,
+        siteConfig: {
+          businessName,
+          industry,
+          city: city || undefined,
+          state: extractedInfo.state || undefined,
+          primaryColor: defaults.primaryColor,
+          accentColor: defaults.accentColor,
+          trustBadges: defaults.trustBadges,
+        },
+        stage: 'gathering',
+        suggestions: defaults.services?.slice(0, 3).map(s => s.name) || [],
+      };
+    }
 
     return {
-      message: businessName
-        ? `Great! ${businessName} sounds like a fantastic business! ${
-            industry ? `I can see you're in the ${industry} industry. ` : ''
-          }What services do you offer to your customers? Feel free to list a few of your main offerings.`
-        : "Welcome to SiteForge! I'm excited to help you build your website. Let's start with the basics - what's your business name and what do you do?",
-      siteData: {
-        businessName,
-        industry,
-        primaryColor: getColorForIndustry(industry),
-        heroHeadline: businessName ? `Welcome to ${businessName}` : null,
-      },
+      message: userMessageCount === 1
+        ? "Welcome to SiteForge! I'll help you build a professional website in just a few minutes.\n\nLet's start - what's your business name, what industry are you in, and where are you located?"
+        : "I need a bit more info. What's your business name and what type of business is it? (e.g., 'Apex Roofing in Charlotte' or 'Green Valley Landscaping in Austin')",
+      siteConfig: {},
+      stage: 'gathering',
       suggestions: [
-        'We offer home repairs and renovations',
-        'Professional consulting services',
-        'Custom product manufacturing',
+        "I run Apex Roofing in Charlotte, NC",
+        "Green Valley Landscaping in Austin, TX",
+        "Premier Plumbing Services in Denver",
       ],
     };
   }
 
-  if (messageCount === 2) {
-    // Second message - extract services
-    const services = extractServices(lastMessage);
+  // Stage 2: Get services
+  if (!hasServices) {
+    const services = extractedInfo.extractedServices;
+    if (services?.length) {
+      return {
+        message: `Perfect! I've added those services. Now let's add your contact details.\n\nWhat's your business phone number and email address?`,
+        siteConfig: {
+          services: services.map(s => ({
+            name: s,
+            description: generateServiceDescription(s, currentConfig.industry || ''),
+            icon: 'shield',
+          })),
+        },
+        stage: 'gathering',
+        suggestions: [
+          "(704) 555-1234, info@example.com",
+          "Just phone: (555) 123-4567",
+          "Email: contact@mybusiness.com",
+        ],
+      };
+    }
+
+    const industryDefaults = INDUSTRY_DEFAULTS[currentConfig.industry || 'roofing'];
+    return {
+      message: `What services does ${currentConfig.businessName} offer?\n\nHere are some common services for ${currentConfig.industry} businesses - feel free to use these or tell me your own:`,
+      siteConfig: {},
+      stage: 'gathering',
+      suggestions: industryDefaults?.services?.slice(0, 4).map(s => s.name) || ['Service 1', 'Service 2'],
+    };
+  }
+
+  // Stage 3: Get contact info
+  if (!hasContact) {
+    const { phone, email } = extractedInfo;
+    if (phone || email) {
+      // Generate the complete website!
+      const fullConfig = generateCompleteWebsite(currentConfig, { phone, email });
+      return {
+        message: `Excellent! Your website is ready! 🎉
+
+I've generated a complete professional website for ${currentConfig.businessName} with:
+✓ Homepage with hero section and trust badges
+✓ About page with your company story
+✓ Services page with all your offerings
+✓ Contact page with form and info
+
+Take a look at the preview and let me know if you'd like to make any changes. When you're happy with it, click "Deploy to Vercel" to go live!`,
+        siteConfig: fullConfig,
+        stage: 'complete',
+        suggestions: [
+          "Change the colors",
+          "Update the headline",
+          "Add more services",
+          "Deploy now!",
+        ],
+      };
+    }
 
     return {
-      message: `Excellent! Those are great services. Now let's make sure customers can reach you. What's the best phone number and email address for your business?`,
-      siteData: {
-        services,
-        heroSubheadline: services?.length
-          ? `Specializing in ${services.slice(0, 2).join(' and ')}`
-          : null,
-      },
+      message: `Almost done! What's the best way for customers to reach ${currentConfig.businessName}?\n\nPlease share your phone number and/or email address.`,
+      siteConfig: {},
+      stage: 'gathering',
       suggestions: [
-        '555-123-4567, contact@mybusiness.com',
-        'Just phone: 555-987-6543',
-        'Email only: hello@company.com',
+        "(555) 123-4567",
+        "info@mybusiness.com",
+        "Both: (555) 123-4567, hello@business.com",
       ],
     };
   }
 
-  if (messageCount === 3) {
-    // Third message - extract contact info
-    const { phone, email } = extractContactInfo(lastMessage);
+  // Handle modification requests
+  if (lastMessage.includes('color') || lastMessage.includes('blue') || lastMessage.includes('green') || lastMessage.includes('red')) {
+    const newColor = extractColor(lastMessage);
+    if (newColor) {
+      return {
+        message: `Done! I've updated the color scheme. How does that look?`,
+        siteConfig: { primaryColor: newColor },
+        stage: 'complete',
+        suggestions: ["Looks great!", "Try a different color", "Deploy now!"],
+      };
+    }
+  }
 
+  if (lastMessage.includes('headline') || lastMessage.includes('title')) {
     return {
-      message: `Perfect! I've got your contact details. Where is your business located? This helps with local SEO and lets customers know your service area.`,
-      siteData: {
-        phone,
-        email,
-      },
+      message: `What would you like the main headline to say? This appears at the top of your homepage.`,
+      siteConfig: {},
+      stage: 'complete',
       suggestions: [
-        'Charlotte, North Carolina',
-        'We serve the entire metro area',
-        'Based in Los Angeles, CA',
+        `${currentConfig.city}'s #1 ${capitalize(currentConfig.industry || '')} Company`,
+        `Trusted ${capitalize(currentConfig.industry || '')} Experts`,
+        "Quality Service, Guaranteed Results",
       ],
     };
   }
 
-  if (messageCount === 4) {
-    // Fourth message - location + generate about text
-    const address = lastMessage.length > 3 ? capitalizeWords(lastMessage) : null;
-    const businessName = currentSiteData.businessName || 'Your Business';
-    const services = currentSiteData.services || [];
-    const industry = currentSiteData.industry || 'service';
-
+  if (lastMessage.includes('deploy') || lastMessage.includes('ready') || lastMessage.includes('live') || lastMessage.includes('looks good')) {
     return {
-      message: `Wonderful! Your website is really taking shape. I've drafted some content based on what you've told me. Take a look at the preview!
+      message: `Perfect! Click the "Deploy to Vercel" button in the header to publish your site. It'll be live in about 30 seconds!
 
-Would you like to:
-- Adjust the color scheme
-- Modify the headlines
-- Add more details about your business
-
-Or if everything looks good, we can proceed to set up your domain and deploy your site!`,
-      siteData: {
-        address,
-        aboutText: `${businessName} is a trusted ${industry} provider serving ${
-          address || 'your local area'
-        }. With our commitment to quality and customer satisfaction, we deliver ${
-          services[0] || 'exceptional services'
-        } that exceed expectations. Contact us today to learn how we can help you.`,
-        heroHeadline: `Your Trusted ${capitalizeWords(industry)} Partner`,
-        heroSubheadline: `Professional ${services.slice(0, 2).join(' & ') || 'Services'} - Serving ${address || 'Your Area'}`,
-        tagline: `Quality ${capitalizeWords(industry)} Solutions`,
-      },
-      suggestions: [
-        'Change the color to blue',
-        'Make the headline more bold',
-        'Looks great, let\'s deploy!',
-      ],
+After deployment, you can:
+• Connect a custom domain
+• Make additional changes anytime
+• Add more pages like FAQ, Gallery, or Blog`,
+      siteConfig: {},
+      stage: 'complete',
+      suggestions: [],
     };
   }
 
-  // Later messages - handle requests
-  if (lastMessage.includes('blue')) {
-    return {
-      message: 'Done! I\'ve updated the color scheme to blue. This gives a more professional and trustworthy feel. What do you think?',
-      siteData: { primaryColor: '#3b82f6' },
-      suggestions: ['Perfect!', 'Try green instead', 'Let\'s deploy the site'],
-    };
-  }
-
-  if (lastMessage.includes('green')) {
-    return {
-      message: 'Updated to green! This gives an eco-friendly, growth-oriented feel. How does that look?',
-      siteData: { primaryColor: '#22c55e' },
-      suggestions: ['Love it!', 'Try purple', 'Ready to deploy'],
-    };
-  }
-
-  if (lastMessage.includes('deploy') || lastMessage.includes('looks good') || lastMessage.includes('perfect')) {
-    return {
-      message: `Fantastic! Your website is ready to go live! 🎉
-
-Here's what happens next:
-1. Click "Deploy to Vercel" to publish your site
-2. You'll get a free .vercel.app domain instantly
-3. You can connect a custom domain anytime
-
-Your site will be live in about 30 seconds. Ready to launch?`,
-      siteData: {},
-      suggestions: ['Deploy now!', 'Wait, I want to make more changes', 'Tell me about custom domains'],
-    };
-  }
-
-  // Default response
+  // Default response for complete stage
   return {
-    message: 'Is there anything else you\'d like to adjust? You can change colors, update the text, or add more details. Just let me know!',
-    siteData: {},
-    suggestions: ['Change the colors', 'Update the headline', 'Add more services', 'Deploy the site'],
+    message: `Your website is looking great! Is there anything you'd like to change?\n\nYou can:\n• Adjust colors or styling\n• Update headlines and text\n• Add more services\n• Deploy when ready!`,
+    siteConfig: {},
+    stage: 'complete',
+    suggestions: ["Change colors", "Update text", "Add services", "Deploy now!"],
   };
 }
 
-// Helper functions
-function extractBusinessName(text: string): string | null {
-  // Common patterns: "I own X", "my company is X", "called X", "named X"
-  const patterns = [
-    /(?:called|named|is|own|run|have)\s+["']?([A-Z][A-Za-z0-9\s&']+?)["']?(?:\.|,|$|\s+(?:and|we|i|it))/i,
-    /^([A-Z][A-Za-z0-9\s&']+?)(?:\s+is|\s+does|\s+-|,|\.)/,
-    /business\s+(?:is\s+)?["']?([A-Z][A-Za-z0-9\s&']+?)["']?/i,
+interface ExtractedInfo {
+  businessName?: string;
+  industry?: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  email?: string;
+  extractedServices?: string[];
+}
+
+function extractInfo(text: string, currentConfig: SiteConfig): ExtractedInfo {
+  const result: ExtractedInfo = {};
+
+  // Extract business name
+  const namePatterns = [
+    /(?:called|named|is|run|own)\s+["']?([A-Z][A-Za-z0-9\s&']+?)["']?(?:\s+in|\s+from|,|\.|\s+and|\s+we)/i,
+    /^([A-Z][A-Za-z0-9\s&']+?)\s+(?:in|from|is)/i,
+    /my\s+(?:business|company)\s+(?:is\s+)?["']?([A-Z][A-Za-z0-9\s&']+?)["']?/i,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of namePatterns) {
     const match = text.match(pattern);
-    if (match?.[1] && match[1].length > 2 && match[1].length < 50) {
-      return match[1].trim();
+    if (match?.[1] && match[1].length > 2 && match[1].length < 40) {
+      result.businessName = match[1].trim();
+      break;
     }
   }
 
-  // If text is short and capitalized, it might be just the name
-  if (text.length < 40 && /^[A-Z]/.test(text)) {
-    const words = text.split(/\s+/).slice(0, 4).join(' ');
-    if (words.length > 2) return words;
-  }
-
-  return null;
-}
-
-function extractIndustry(text: string): string | null {
+  // Extract industry
   const industries: Record<string, string[]> = {
-    roofing: ['roof', 'roofing', 'shingle', 'gutter'],
-    landscaping: ['landscape', 'landscaping', 'lawn', 'garden', 'tree'],
-    plumbing: ['plumb', 'plumbing', 'pipe', 'drain'],
-    hvac: ['hvac', 'heating', 'cooling', 'air condition', 'furnace'],
+    roofing: ['roof', 'roofing', 'shingle', 'gutter', 'roofer'],
+    landscaping: ['landscape', 'landscaping', 'lawn', 'garden', 'yard'],
+    plumbing: ['plumb', 'plumbing', 'pipe', 'drain', 'plumber'],
+    hvac: ['hvac', 'heating', 'cooling', 'air condition', 'ac ', 'furnace'],
     electrical: ['electric', 'electrical', 'wiring', 'electrician'],
-    construction: ['construct', 'building', 'contractor', 'renovation'],
-    cleaning: ['clean', 'cleaning', 'maid', 'janitorial'],
-    automotive: ['auto', 'car', 'mechanic', 'vehicle'],
-    restaurant: ['restaurant', 'food', 'cafe', 'dining', 'catering'],
-    consulting: ['consult', 'advisor', 'consulting'],
-    photography: ['photo', 'photography', 'photographer', 'portrait'],
-    fitness: ['fitness', 'gym', 'training', 'workout', 'personal trainer'],
+    cleaning: ['clean', 'cleaning', 'maid', 'janitorial', 'housekeep'],
+    construction: ['construct', 'building', 'contractor', 'remodel', 'renovation'],
+    painting: ['paint', 'painting', 'painter'],
+    flooring: ['floor', 'flooring', 'carpet', 'tile', 'hardwood'],
+    pest: ['pest', 'exterminator', 'bug', 'termite'],
   };
 
-  const lowerText = text.toLowerCase();
   for (const [industry, keywords] of Object.entries(industries)) {
-    if (keywords.some((kw) => lowerText.includes(kw))) {
-      return industry;
+    if (keywords.some(kw => text.toLowerCase().includes(kw))) {
+      result.industry = industry;
+      break;
     }
   }
 
-  return null;
-}
-
-function extractServices(text: string): string[] | null {
-  // Split by common delimiters
-  const parts = text.split(/,|and|\n|•|;|\||\//).map((s) => s.trim()).filter((s) => s.length > 2 && s.length < 50);
-
-  if (parts.length > 0) {
-    return parts.map((s) => capitalizeWords(s)).slice(0, 6);
+  // Extract city and state
+  const locationMatch = text.match(/in\s+([A-Za-z\s]+),?\s*([A-Z]{2})?/i);
+  if (locationMatch) {
+    result.city = locationMatch[1].trim();
+    if (locationMatch[2]) result.state = locationMatch[2];
   }
 
-  return null;
+  // Extract services
+  const serviceIndicators = ['offer', 'provide', 'do', 'services', 'specialize'];
+  if (serviceIndicators.some(ind => text.toLowerCase().includes(ind)) || currentConfig.businessName) {
+    const parts = text.split(/,|\band\b|\n|;/).map(s => s.trim()).filter(s => {
+      const lower = s.toLowerCase();
+      return s.length > 3 &&
+        s.length < 50 &&
+        !lower.includes('my business') &&
+        !lower.includes('we offer') &&
+        !lower.includes('email') &&
+        !lower.includes('phone') &&
+        !lower.includes('@');
+    });
+    if (parts.length > 0) {
+      result.extractedServices = parts.map(s => capitalize(s.replace(/^(we\s+)?(offer|provide|do)\s+/i, '')));
+    }
+  }
+
+  // Extract contact info
+  const phoneMatch = text.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+  if (phoneMatch) result.phone = phoneMatch[0];
+
+  const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+  if (emailMatch) result.email = emailMatch[0];
+
+  return result;
 }
 
-function extractContactInfo(text: string): { phone: string | null; email: string | null } {
-  const phoneMatch = text.match(/[\d\-\(\)\s]{10,}/);
-  const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+function generateCompleteWebsite(currentConfig: SiteConfig, contactInfo: { phone?: string; email?: string }): SiteConfig {
+  const industry = currentConfig.industry || 'roofing';
+  const defaults = INDUSTRY_DEFAULTS[industry] || INDUSTRY_DEFAULTS.roofing;
+  const city = currentConfig.city || 'Your City';
+  const businessName = currentConfig.businessName || 'Your Business';
 
   return {
-    phone: phoneMatch ? phoneMatch[0].trim() : null,
-    email: emailMatch ? emailMatch[0] : null,
+    ...currentConfig,
+    phone: contactInfo.phone || currentConfig.phone,
+    email: contactInfo.email || currentConfig.email,
+    address: `${city}${currentConfig.state ? `, ${currentConfig.state}` : ''}`,
+    heroHeadline: `${city}'s Trusted ${capitalize(industry)} Experts`,
+    heroSubheadline: `Professional ${industry} services with quality craftsmanship and customer satisfaction guaranteed. Serving ${city} and surrounding areas with integrity and expertise.`,
+    tagline: `Quality ${capitalize(industry)} Solutions`,
+    aboutText: `${businessName} has been proudly serving ${city} and the surrounding communities with professional ${industry} services. Our team of experienced professionals is dedicated to delivering exceptional results with integrity, quality workmanship, and outstanding customer service. We treat every project as if it were our own home, ensuring complete satisfaction with every job.`,
+    yearsInBusiness: 10,
+    testimonials: [
+      {
+        name: 'Sarah M.',
+        text: `${businessName} exceeded our expectations! Professional, punctual, and the quality of work was outstanding. Highly recommend!`,
+        rating: 5,
+      },
+      {
+        name: 'Michael R.',
+        text: `From start to finish, the team at ${businessName} was fantastic. They explained everything clearly and delivered exactly what they promised.`,
+        rating: 5,
+      },
+      {
+        name: 'Jennifer L.',
+        text: `I've used ${businessName} multiple times now and they never disappoint. Fair pricing, great communication, and excellent results every time.`,
+        rating: 5,
+      },
+    ],
+    ctaHeadline: 'Ready to Get Started?',
+    ctaSubheadline: `Contact ${businessName} today for a free consultation and estimate.`,
+    faqs: defaults.faqs,
+    services: currentConfig.services || defaults.services,
+    trustBadges: defaults.trustBadges || currentConfig.trustBadges,
   };
 }
 
-function getColorForIndustry(industry: string | null): string | null {
+function generateServiceDescription(serviceName: string, industry: string): string {
+  const templates = [
+    `Professional ${serviceName.toLowerCase()} services tailored to your needs`,
+    `Expert ${serviceName.toLowerCase()} with quality materials and workmanship`,
+    `Reliable ${serviceName.toLowerCase()} solutions for residential and commercial clients`,
+  ];
+  return templates[Math.floor(Math.random() * templates.length)];
+}
+
+function extractColor(text: string): string | null {
   const colors: Record<string, string> = {
-    roofing: '#dc2626',
-    landscaping: '#22c55e',
-    plumbing: '#3b82f6',
-    hvac: '#06b6d4',
-    electrical: '#f59e0b',
-    construction: '#f97316',
-    cleaning: '#06b6d4',
-    automotive: '#6b7280',
-    restaurant: '#ef4444',
-    consulting: '#6366f1',
-    photography: '#8b5cf6',
-    fitness: '#ec4899',
+    blue: '#1d4ed8',
+    green: '#166534',
+    red: '#dc2626',
+    purple: '#7c3aed',
+    orange: '#ea580c',
+    teal: '#0d9488',
+    indigo: '#4f46e5',
+    navy: '#1e3a5f',
+    black: '#1f2937',
   };
 
-  return industry ? colors[industry] || '#4f46e5' : null;
+  for (const [name, hex] of Object.entries(colors)) {
+    if (text.toLowerCase().includes(name)) return hex;
+  }
+  return null;
 }
 
-function capitalizeWords(str: string): string {
-  return str
-    .toLowerCase()
-    .split(' ')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }

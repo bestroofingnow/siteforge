@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChatInterface, type Message } from '../chat/ChatInterface';
-import { PreviewPanel } from '../preview/PreviewPanel';
+import { WebsitePreview } from '../preview/WebsitePreview';
 import {
   Rocket,
   Sparkles,
@@ -14,48 +14,43 @@ import {
   Copy,
   PartyPopper,
   Settings,
-  ChevronDown,
+  Plus,
+  FileText,
+  Image,
+  HelpCircle,
+  MapPin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import confetti from 'canvas-confetti';
-
-interface SiteData {
-  businessName?: string;
-  tagline?: string;
-  industry?: string;
-  services?: string[];
-  phone?: string;
-  email?: string;
-  address?: string;
-  primaryColor?: string;
-  style?: string;
-  heroHeadline?: string;
-  heroSubheadline?: string;
-  aboutText?: string;
-}
+import type { SiteConfig, PageConfig } from '@/lib/website-templates';
+import { DEFAULT_PAGES, ADDITIONAL_PAGES } from '@/lib/website-templates';
 
 type DeploymentStatus = 'idle' | 'deploying' | 'complete' | 'error';
+type PageView = 'home' | 'about' | 'services' | 'contact';
 
 export function ConversationalBuilder() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hi there! I'm SiteForge AI, your personal website builder assistant. 👋\n\nI'll help you create a beautiful, professional website for your business in just a few minutes. Let's start with the basics - what's your business name and what do you do?",
+      content: "Hi! I'm SiteForge AI, and I'll help you build a professional website in minutes. 🚀\n\nLet's start - what's your business name, what industry are you in, and where are you located?\n\n(For example: \"I run Apex Roofing in Charlotte, NC\")",
       timestamp: new Date(),
     },
   ]);
-  const [siteData, setSiteData] = useState<SiteData>({});
+  const [siteConfig, setSiteConfig] = useState<Partial<SiteConfig>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([
-    "I own a roofing company called Apex Roofing",
-    "My landscaping business is Green Valley Gardens",
-    "I run a consulting firm",
+    "I run Apex Roofing in Charlotte, NC",
+    "Green Valley Landscaping in Austin, TX",
+    "Premier Plumbing in Denver, CO",
   ]);
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatus>('idle');
-  const [deploymentUrl, setDeploymentUrl] = useState<string>('');
+  const [deploymentUrl, setDeploymentUrl] = useState('');
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [activePage, setActivePage] = useState<PageView>('home');
+  const [generatedPages, setGeneratedPages] = useState<string[]>(['home', 'about', 'services', 'contact']);
+  const [showAddPageModal, setShowAddPageModal] = useState(false);
 
   const triggerConfetti = useCallback(() => {
     const duration = 3000;
@@ -63,24 +58,9 @@ export function ConversationalBuilder() {
     const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#22c55e', '#f59e0b'];
 
     (function frame() {
-      confetti({
-        particleCount: 3,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0 },
-        colors,
-      });
-      confetti({
-        particleCount: 3,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1 },
-        colors,
-      });
-
-      if (Date.now() < end) {
-        requestAnimationFrame(frame);
-      }
+      confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 }, colors });
+      confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 }, colors });
+      if (Date.now() < end) requestAnimationFrame(frame);
     })();
   }, []);
 
@@ -92,11 +72,9 @@ export function ConversationalBuilder() {
       timestamp: new Date(),
     };
 
-    // Add user message
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
-    // Add typing indicator
     const typingMessage: Message = {
       id: 'typing',
       role: 'assistant',
@@ -115,13 +93,12 @@ export function ConversationalBuilder() {
             role: m.role,
             content: m.content,
           })),
-          currentSiteData: siteData,
+          currentSiteConfig: siteConfig,
         }),
       });
 
       const data = await response.json();
 
-      // Remove typing indicator and add real response
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== 'typing');
         return [
@@ -135,22 +112,20 @@ export function ConversationalBuilder() {
         ];
       });
 
-      // Update site data with new information
-      if (data.siteData) {
-        setSiteData((prev) => ({
+      if (data.siteConfig) {
+        setSiteConfig((prev) => ({
           ...prev,
           ...Object.fromEntries(
-            Object.entries(data.siteData).filter(([, v]) => v !== null && v !== undefined)
+            Object.entries(data.siteConfig).filter(([, v]) => v !== null && v !== undefined)
           ),
         }));
       }
 
-      // Update suggestions
       if (data.suggestions) {
         setSuggestions(data.suggestions);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error:', error);
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== 'typing');
         return [
@@ -172,10 +147,9 @@ export function ConversationalBuilder() {
     setShowDeployModal(true);
     setDeploymentStatus('deploying');
 
-    // Simulate deployment (in real app, this would call the deploy API)
     await new Promise((r) => setTimeout(r, 3000));
 
-    const subdomain = (siteData.businessName || 'my-site')
+    const subdomain = (siteConfig.businessName || 'my-site')
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-');
@@ -191,13 +165,13 @@ export function ConversationalBuilder() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isReadyToDeploy = siteData.businessName && (siteData.services?.length || siteData.heroHeadline);
+  const isReadyToDeploy = siteConfig.businessName && siteConfig.heroHeadline;
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       {/* Header */}
       <header className="flex-shrink-0 px-6 py-4 bg-white/80 backdrop-blur-xl border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <motion.div
               animate={{ rotate: [0, 10, -10, 0] }}
@@ -215,6 +189,26 @@ export function ConversationalBuilder() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Pages indicator */}
+            {isReadyToDeploy && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-sm">
+                <Check className="w-4 h-4" />
+                <span>{generatedPages.length} pages ready</span>
+              </div>
+            )}
+
+            {/* Add Page Button */}
+            {isReadyToDeploy && (
+              <button
+                onClick={() => setShowAddPageModal(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Page
+              </button>
+            )}
+
+            {/* Deploy Button */}
             {isReadyToDeploy && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -228,21 +222,18 @@ export function ConversationalBuilder() {
                 Deploy to Vercel
               </motion.button>
             )}
-            <button className="p-2 text-slate-500 hover:text-slate-700 transition-colors">
-              <Settings className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="max-w-7xl mx-auto w-full flex gap-6 p-6">
+        <div className="max-w-[1600px] mx-auto w-full flex gap-6 p-6">
           {/* Chat Panel */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="w-[420px] flex-shrink-0"
+            className="w-[400px] flex-shrink-0"
           >
             <ChatInterface
               messages={messages}
@@ -259,57 +250,110 @@ export function ConversationalBuilder() {
             transition={{ delay: 0.1 }}
             className="flex-1 min-w-0"
           >
-            <PreviewPanel siteData={siteData} isGenerating={isLoading} />
+            <WebsitePreview
+              siteConfig={siteConfig}
+              activePage={activePage}
+              onPageChange={setActivePage}
+              isGenerating={isLoading}
+            />
           </motion.div>
         </div>
       </div>
 
-      {/* Progress Indicator */}
+      {/* Progress Footer */}
       <div className="flex-shrink-0 px-6 py-3 bg-white/80 backdrop-blur-xl border-t border-slate-200/50">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-500">Progress:</span>
-            <div className="flex-1 flex items-center gap-2">
+            <span className="text-sm text-slate-500">Building:</span>
+            <div className="flex items-center gap-2">
               {[
-                { label: 'Business Info', done: !!siteData.businessName },
-                { label: 'Services', done: !!siteData.services?.length },
-                { label: 'Contact', done: !!siteData.phone || !!siteData.email },
-                { label: 'Content', done: !!siteData.heroHeadline },
-                { label: 'Deploy', done: deploymentStatus === 'complete' },
-              ].map((step, index) => (
+                { label: 'Business Info', done: !!siteConfig.businessName },
+                { label: 'Services', done: !!(siteConfig.services?.length) },
+                { label: 'Contact Info', done: !!siteConfig.phone || !!siteConfig.email },
+                { label: 'Content', done: !!siteConfig.heroHeadline },
+              ].map((step, i) => (
                 <div key={step.label} className="flex items-center gap-2">
                   <div
                     className={clsx(
-                      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold transition-colors',
-                      step.done
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-200 text-slate-500'
+                      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold',
+                      step.done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'
                     )}
                   >
-                    {step.done ? <Check className="w-3 h-3" /> : index + 1}
+                    {step.done ? <Check className="w-3 h-3" /> : i + 1}
                   </div>
-                  <span
-                    className={clsx(
-                      'text-xs hidden sm:inline',
-                      step.done ? 'text-emerald-600 font-medium' : 'text-slate-400'
-                    )}
-                  >
+                  <span className={clsx('text-xs hidden lg:inline', step.done ? 'text-emerald-600' : 'text-slate-400')}>
                     {step.label}
                   </span>
-                  {index < 4 && (
-                    <div
-                      className={clsx(
-                        'w-8 h-0.5 hidden sm:block',
-                        step.done ? 'bg-emerald-300' : 'bg-slate-200'
-                      )}
-                    />
-                  )}
+                  {i < 3 && <div className={clsx('w-6 h-0.5', step.done ? 'bg-emerald-300' : 'bg-slate-200')} />}
                 </div>
               ))}
             </div>
           </div>
+
+          <div className="text-xs text-slate-500">
+            Powered by Claude AI
+          </div>
         </div>
       </div>
+
+      {/* Add Page Modal */}
+      <AnimatePresence>
+        {showAddPageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowAddPageModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full"
+            >
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Add a New Page</h3>
+              <p className="text-sm text-slate-500 mb-4">
+                Choose a page type to add to your website. Each page will be generated with professional content.
+              </p>
+
+              <div className="space-y-2">
+                {ADDITIONAL_PAGES.filter(p => !generatedPages.includes(p.id)).map((page) => (
+                  <button
+                    key={page.id}
+                    onClick={() => {
+                      setGeneratedPages((prev) => [...prev, page.id]);
+                      setShowAddPageModal(false);
+                      handleSendMessage(`Add a ${page.name} page to my website`);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-left"
+                  >
+                    <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                      {page.icon === 'help-circle' && <HelpCircle className="w-5 h-5 text-indigo-600" />}
+                      {page.icon === 'star' && <Sparkles className="w-5 h-5 text-indigo-600" />}
+                      {page.icon === 'image' && <Image className="w-5 h-5 text-indigo-600" />}
+                      {page.icon === 'map-pin' && <MapPin className="w-5 h-5 text-indigo-600" />}
+                      {page.icon === 'file-text' && <FileText className="w-5 h-5 text-indigo-600" />}
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-900">{page.name}</div>
+                      <div className="text-xs text-slate-500">{page.description}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setShowAddPageModal(false)}
+                className="w-full mt-4 py-2 text-sm text-slate-500 hover:text-slate-700"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Deploy Modal */}
       <AnimatePresence>
@@ -337,31 +381,25 @@ export function ConversationalBuilder() {
                   >
                     <Loader2 className="w-8 h-8 text-white" />
                   </motion.div>
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">
-                    Deploying Your Website
-                  </h3>
-                  <p className="text-slate-500">
-                    Building and deploying to Vercel...
-                  </p>
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">Deploying Your Website</h3>
+                  <p className="text-slate-500">Building and deploying to Vercel...</p>
                   <div className="mt-6 space-y-2">
-                    {['Generating content', 'Building pages', 'Deploying to Vercel'].map(
-                      (step, i) => (
+                    {['Generating pages', 'Building assets', 'Deploying to CDN'].map((step, i) => (
+                      <motion.div
+                        key={step}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.5 }}
+                        className="flex items-center gap-3 text-sm"
+                      >
                         <motion.div
-                          key={step}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.5 }}
-                          className="flex items-center gap-3 text-sm"
-                        >
-                          <motion.div
-                            animate={{ scale: [1, 1.2, 1] }}
-                            transition={{ duration: 1, repeat: Infinity, delay: i * 0.3 }}
-                            className="w-2 h-2 bg-indigo-500 rounded-full"
-                          />
-                          <span className="text-slate-600">{step}</span>
-                        </motion.div>
-                      )
-                    )}
+                          animate={{ scale: [1, 1.2, 1] }}
+                          transition={{ duration: 1, repeat: Infinity, delay: i * 0.3 }}
+                          className="w-2 h-2 bg-indigo-500 rounded-full"
+                        />
+                        <span className="text-slate-600">{step}</span>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -375,13 +413,8 @@ export function ConversationalBuilder() {
                     <PartyPopper className="w-10 h-10 text-white" />
                   </motion.div>
 
-                  <h3 className="text-2xl font-bold text-slate-900 mb-2">
-                    Your Site is Live! 🎉
-                  </h3>
-
-                  <p className="text-slate-500 mb-6">
-                    {siteData.businessName} is now available online
-                  </p>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Your Site is Live! 🎉</h3>
+                  <p className="text-slate-500 mb-6">{siteConfig.businessName} is now online</p>
 
                   <div className="flex items-center gap-2 bg-slate-100 px-4 py-3 rounded-xl mb-6">
                     <Globe className="w-4 h-4 text-indigo-500" />
@@ -393,15 +426,8 @@ export function ConversationalBuilder() {
                     >
                       {deploymentUrl}
                     </a>
-                    <button
-                      onClick={copyUrl}
-                      className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
-                    >
-                      {copied ? (
-                        <Check className="w-4 h-4 text-emerald-500" />
-                      ) : (
-                        <Copy className="w-4 h-4 text-slate-400" />
-                      )}
+                    <button onClick={copyUrl} className="p-1.5 hover:bg-slate-200 rounded-lg">
+                      {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
                     </button>
                   </div>
 
@@ -417,7 +443,7 @@ export function ConversationalBuilder() {
                       onClick={() => setShowDeployModal(false)}
                       className="flex-1 px-4 py-2.5 border-2 border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50"
                     >
-                      Continue Editing
+                      Continue
                     </button>
                   </div>
                 </div>

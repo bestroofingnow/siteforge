@@ -29,48 +29,35 @@ interface SiteConfig {
   ctaSubheadline?: string;
 }
 
-const SYSTEM_PROMPT = `You are SiteForge AI, an expert website builder assistant. You help users create professional business websites through natural conversation.
-
-Your goal is to gather information about their business and generate a complete, professional website.
+const SYSTEM_PROMPT = `You are SiteForge AI, a friendly website builder assistant helping users create professional business websites.
 
 CONVERSATION FLOW:
-1. Ask about business name, type/industry, and location
-2. Ask about their services (what they offer)
-3. Ask about contact info (phone, email)
-4. Generate the complete website content
+1. First, ask about their business name, industry, and location
+2. Then ask about their services
+3. Finally ask for contact info (phone/email)
+4. Once you have enough info, generate the complete website
 
-IMPORTANT:
-- Be conversational and friendly
+GUIDELINES:
+- Be warm, conversational, and encouraging
 - Ask 1-2 questions at a time
-- When you have enough info, generate ALL content at once
-- Create professional, SEO-optimized copy
+- Generate professional, SEO-optimized content when ready
+- For industries, use: roofing, landscaping, plumbing, hvac, electrical, cleaning, construction, painting, flooring, pest
 
-RESPONSE FORMAT (JSON):
-{
-  "message": "Your response to the user",
-  "siteConfig": {
-    // Only include fields you're updating
-    "businessName": "string",
-    "industry": "roofing|landscaping|plumbing|hvac|cleaning|etc",
-    "city": "string",
-    "state": "string",
-    "services": [{"name": "string", "description": "string", "icon": "string"}],
-    "phone": "string",
-    "email": "string",
-    "primaryColor": "#hex",
-    "accentColor": "#hex",
-    "heroHeadline": "string",
-    "heroSubheadline": "string",
-    "aboutText": "string",
-    "tagline": "string",
-    "trustBadges": [{"icon": "star|shield|award|clock", "text": "string"}],
-    "testimonials": [{"name": "string", "text": "string", "rating": 5}],
-    "ctaHeadline": "string",
-    "ctaSubheadline": "string"
-  },
-  "stage": "gathering|generating|complete",
-  "suggestions": ["suggestion1", "suggestion2"]
-}`;
+You MUST respond with ONLY valid JSON - no markdown, no code blocks, no extra text. Just the raw JSON object:
+
+{"message":"Your friendly response here","siteConfig":{},"stage":"gathering","suggestions":["opt1","opt2"]}
+
+siteConfig fields (only include what you're setting):
+- businessName, industry, city, state, phone, email
+- primaryColor (hex like #1e3a5f), accentColor (hex)
+- heroHeadline, heroSubheadline, tagline, aboutText
+- services: [{"name":"Service Name","description":"Description","icon":"shield"}]
+- trustBadges: [{"icon":"star","text":"5-Star Rated"}]
+- testimonials: [{"name":"John D.","text":"Great service!","rating":5}]
+- ctaHeadline, ctaSubheadline
+
+stage: "gathering" while collecting info, "complete" when website is ready
+suggestions: 2-4 quick reply options for the user`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -110,13 +97,37 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const content = data.content[0].text;
+    let content = data.content[0].text;
+
+    // Clean up the response - remove markdown code blocks if present
+    content = content.trim();
+    if (content.startsWith('```json')) {
+      content = content.slice(7);
+    } else if (content.startsWith('```')) {
+      content = content.slice(3);
+    }
+    if (content.endsWith('```')) {
+      content = content.slice(0, -3);
+    }
+    content = content.trim();
+
+    // Try to extract JSON if there's extra text
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      content = jsonMatch[0];
+    }
 
     try {
-      return NextResponse.json(JSON.parse(content));
+      const parsed = JSON.parse(content);
+      // Ensure message exists
+      if (!parsed.message) {
+        parsed.message = "I'm working on your website. What would you like to do next?";
+      }
+      return NextResponse.json(parsed);
     } catch {
+      // If JSON parsing fails, use the content as the message
       return NextResponse.json({
-        message: content,
+        message: content.replace(/[{}"\[\]]/g, '').trim() || "I'm here to help! Tell me about your business.",
         siteConfig: {},
         stage: 'gathering',
         suggestions: [],

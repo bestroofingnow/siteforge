@@ -33,3 +33,6 @@ coverage/
 
 # Generated sites (for testing)
 generated-sites/
+
+.vercel
+.env*.local

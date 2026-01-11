@@ -1,0 +1,33 @@
+{
+  "name": "@siteforge/cli",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "siteforge": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@siteforge/shared": "workspace:*",
+    "@siteforge/core": "workspace:*",
+    "@siteforge/generator": "workspace:*",
+    "@siteforge/templates": "workspace:*",
+    "commander": "^12.1.0",
+    "@inquirer/prompts": "^7.0.0",
+    "ora": "^8.1.0",
+    "chalk": "^5.3.0",
+    "boxen": "^8.0.1",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

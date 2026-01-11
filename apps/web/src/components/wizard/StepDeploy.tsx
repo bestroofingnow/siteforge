@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import confetti from 'canvas-confetti';
 import { useWizard } from './WizardContext';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import {
   Rocket,
   ArrowLeft,
@@ -12,10 +13,13 @@ import {
   ExternalLink,
   AlertCircle,
   Sparkles,
-  Code,
   Globe,
   PartyPopper,
   Copy,
+  Zap,
+  Code2,
+  Upload,
+  Link2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -29,6 +33,7 @@ interface StepProps {
 type DeploymentStep = {
   id: string;
   label: string;
+  icon: React.ComponentType<{ className?: string }>;
   status: 'pending' | 'active' | 'complete' | 'error';
   message?: string;
 };
@@ -36,98 +41,40 @@ type DeploymentStep = {
 export function StepDeploy({ onBack }: StepProps) {
   const { data, updateData } = useWizard();
   const [steps, setSteps] = useState<DeploymentStep[]>([
-    { id: 'generate', label: 'Generating content with AI', status: 'pending' },
-    { id: 'build', label: 'Building website files', status: 'pending' },
-    { id: 'deploy', label: 'Deploying to Vercel', status: 'pending' },
-    { id: 'domain', label: 'Configuring domain', status: 'pending' },
+    { id: 'generate', label: 'Generating content with AI', icon: Sparkles, status: 'pending' },
+    { id: 'build', label: 'Building website files', icon: Code2, status: 'pending' },
+    { id: 'deploy', label: 'Deploying to Vercel', icon: Upload, status: 'pending' },
+    { id: 'domain', label: 'Configuring domain', icon: Link2, status: 'pending' },
   ]);
   const [copied, setCopied] = useState(false);
 
-  const startDeployment = async () => {
-    updateData({ deploymentStatus: 'generating', deploymentError: '' });
+  const triggerConfetti = useCallback(() => {
+    const duration = 3000;
+    const end = Date.now() + duration;
 
-    // Step 1: Generate content
-    updateStep('generate', 'active');
-    try {
-      const generateRes = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: data.businessName,
-          industry: data.industry,
-          phone: data.phone,
-          email: data.email,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          services: data.services,
-          serviceAreas: data.serviceAreas,
-          colorScheme: data.colorScheme,
-          style: data.style,
-        }),
+    const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#22c55e', '#f59e0b'];
+
+    (function frame() {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0 },
+        colors,
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1 },
+        colors,
       });
 
-      if (!generateRes.ok) {
-        throw new Error('Failed to generate website');
+      if (Date.now() < end) {
+        requestAnimationFrame(frame);
       }
-
-      const { projectId } = await generateRes.json();
-      updateStep('generate', 'complete');
-
-      // Step 2: Build
-      updateStep('build', 'active');
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulated build time
-      updateStep('build', 'complete');
-
-      // Step 3: Deploy
-      updateData({ deploymentStatus: 'deploying' });
-      updateStep('deploy', 'active');
-
-      const deployRes = await fetch('/api/deploy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          vercelToken: data.vercelToken,
-        }),
-      });
-
-      if (!deployRes.ok) {
-        throw new Error('Failed to deploy to Vercel');
-      }
-
-      const { url } = await deployRes.json();
-      updateData({ deploymentUrl: url });
-      updateStep('deploy', 'complete');
-
-      // Step 4: Domain
-      updateStep('domain', 'active');
-      if (data.domainOption === 'search' && data.selectedDomain) {
-        // Purchase and configure domain
-        await fetch('/api/domains/purchase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            domain: data.selectedDomain,
-            projectId,
-          }),
-        });
-      }
-      updateStep('domain', 'complete');
-
-      updateData({ deploymentStatus: 'complete' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Deployment failed';
-      updateData({ deploymentStatus: 'error', deploymentError: message });
-
-      // Mark current active step as error
-      setSteps((prev) =>
-        prev.map((step) =>
-          step.status === 'active' ? { ...step, status: 'error', message } : step
-        )
-      );
-    }
-  };
+    })();
+  }, []);
 
   const updateStep = (id: string, status: DeploymentStep['status'], message?: string) => {
     setSteps((prev) =>
@@ -144,13 +91,12 @@ export function StepDeploy({ onBack }: StepProps) {
   // Auto-start deployment when component mounts (demo mode)
   useEffect(() => {
     if (data.deploymentStatus === 'idle') {
-      // Simulate deployment for demo
       const simulateDeployment = async () => {
         updateData({ deploymentStatus: 'generating' });
 
         for (const step of steps) {
           updateStep(step.id, 'active');
-          await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+          await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
           updateStep(step.id, 'complete');
         }
 
@@ -158,6 +104,7 @@ export function StepDeploy({ onBack }: StepProps) {
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '-')
           .replace(/-+/g, '-');
+
         updateData({
           deploymentStatus: 'complete',
           deploymentUrl: `https://${subdomain}.vercel.app`,
@@ -168,166 +115,290 @@ export function StepDeploy({ onBack }: StepProps) {
     }
   }, []);
 
+  // Trigger confetti when complete
+  useEffect(() => {
+    if (data.deploymentStatus === 'complete') {
+      triggerConfetti();
+    }
+  }, [data.deploymentStatus, triggerConfetti]);
+
   const isDeploying = data.deploymentStatus === 'generating' || data.deploymentStatus === 'deploying';
   const isComplete = data.deploymentStatus === 'complete';
   const hasError = data.deploymentStatus === 'error';
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2 bg-primary/10 rounded-lg">
-          <Rocket className="w-6 h-6 text-primary" />
-        </div>
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center gap-4 mb-8"
+      >
+        <motion.div
+          className="relative"
+          animate={isComplete ? { scale: [1, 1.1, 1] } : {}}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur-lg opacity-30" />
+          <div className="relative p-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl">
+            <Rocket className="w-7 h-7 text-white" />
+          </div>
+        </motion.div>
         <div>
-          <h2 className="text-xl font-bold text-foreground">
+          <h2 className="text-2xl font-bold text-slate-900">
             {isComplete ? 'Your Website is Live!' : 'Launching Your Website'}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-slate-500">
             {isComplete
               ? 'Congratulations! Your site is ready to go'
               : 'Please wait while we build and deploy your site'}
           </p>
         </div>
-      </div>
+      </motion.div>
 
       {/* Deployment Steps */}
       <div className="space-y-3 mb-8">
-        {steps.map((step, index) => (
-          <div
-            key={step.id}
-            className={clsx(
-              'flex items-center gap-3 p-4 rounded-xl border transition-all',
-              step.status === 'complete' && 'bg-success/5 border-success/20',
-              step.status === 'active' && 'bg-primary/5 border-primary/20',
-              step.status === 'error' && 'bg-error/5 border-error/20',
-              step.status === 'pending' && 'bg-muted/50 border-border'
-            )}
-          >
-            <div
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <motion.div
+              key={step.id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
               className={clsx(
-                'w-8 h-8 rounded-full flex items-center justify-center',
-                step.status === 'complete' && 'bg-success text-white',
-                step.status === 'active' && 'bg-primary text-white',
-                step.status === 'error' && 'bg-error text-white',
-                step.status === 'pending' && 'bg-muted text-muted-foreground'
+                'flex items-center gap-4 p-4 rounded-2xl border-2 transition-all duration-300',
+                step.status === 'complete' && 'bg-emerald-50 border-emerald-200',
+                step.status === 'active' && 'bg-indigo-50 border-indigo-200 shadow-lg shadow-indigo-500/10',
+                step.status === 'error' && 'bg-red-50 border-red-200',
+                step.status === 'pending' && 'bg-slate-50 border-slate-200'
               )}
             >
-              {step.status === 'complete' ? (
-                <Check className="w-4 h-4" />
-              ) : step.status === 'active' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : step.status === 'error' ? (
-                <AlertCircle className="w-4 h-4" />
-              ) : (
-                index + 1
-              )}
-            </div>
-            <div className="flex-1">
-              <span
+              <motion.div
+                animate={step.status === 'active' ? { scale: [1, 1.1, 1] } : {}}
+                transition={{ duration: 1, repeat: step.status === 'active' ? Infinity : 0 }}
                 className={clsx(
-                  'font-medium',
-                  step.status === 'pending' ? 'text-muted-foreground' : 'text-foreground'
+                  'w-12 h-12 rounded-xl flex items-center justify-center',
+                  step.status === 'complete' && 'bg-gradient-to-r from-emerald-400 to-green-500 shadow-lg shadow-emerald-500/30',
+                  step.status === 'active' && 'bg-gradient-to-r from-indigo-500 to-purple-500 shadow-lg shadow-indigo-500/30',
+                  step.status === 'error' && 'bg-gradient-to-r from-red-400 to-red-500 shadow-lg shadow-red-500/30',
+                  step.status === 'pending' && 'bg-slate-200'
                 )}
               >
-                {step.label}
-              </span>
-              {step.message && (
-                <p className="text-sm text-error mt-0.5">{step.message}</p>
+                <AnimatePresence mode="wait">
+                  {step.status === 'complete' ? (
+                    <motion.div
+                      key="complete"
+                      initial={{ scale: 0, rotate: -180 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      exit={{ scale: 0 }}
+                    >
+                      <Check className="w-6 h-6 text-white" strokeWidth={3} />
+                    </motion.div>
+                  ) : step.status === 'active' ? (
+                    <motion.div
+                      key="active"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    >
+                      <Loader2 className="w-6 h-6 text-white" />
+                    </motion.div>
+                  ) : step.status === 'error' ? (
+                    <AlertCircle className="w-6 h-6 text-white" />
+                  ) : (
+                    <Icon className="w-6 h-6 text-slate-400" />
+                  )}
+                </AnimatePresence>
+              </motion.div>
+
+              <div className="flex-1">
+                <span
+                  className={clsx(
+                    'font-semibold',
+                    step.status === 'pending' ? 'text-slate-400' : 'text-slate-900'
+                  )}
+                >
+                  {step.label}
+                </span>
+                {step.message && (
+                  <p className="text-sm text-red-500 mt-0.5">{step.message}</p>
+                )}
+              </div>
+
+              {step.status === 'complete' && (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="text-sm text-emerald-600 font-semibold bg-emerald-100 px-3 py-1 rounded-full"
+                >
+                  Complete
+                </motion.span>
               )}
-            </div>
-            {step.status === 'complete' && (
-              <span className="text-sm text-success font-medium">Done</span>
-            )}
-          </div>
-        ))}
+              {step.status === 'active' && (
+                <motion.div
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="text-sm text-indigo-600 font-semibold"
+                >
+                  Processing...
+                </motion.div>
+              )}
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Success State */}
-      {isComplete && (
-        <div className="text-center py-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-success/10 rounded-full mb-4">
-            <PartyPopper className="w-10 h-10 text-success" />
-          </div>
-
-          <h3 className="text-2xl font-bold text-foreground mb-2">
-            {data.businessName} is Live!
-          </h3>
-
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <a
-              href={data.deploymentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline font-medium"
+      <AnimatePresence>
+        {isComplete && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="text-center py-8"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 200, delay: 0.2 }}
+              className="relative inline-block mb-6"
             >
-              {data.deploymentUrl}
-            </a>
-            <button
-              onClick={copyUrl}
-              className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-            >
-              {copied ? (
-                <Check className="w-4 h-4 text-success" />
-              ) : (
-                <Copy className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-          </div>
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full blur-2xl opacity-30" />
+              <motion.div
+                animate={{
+                  y: [0, -10, 0],
+                  rotate: [0, 5, -5, 0],
+                }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="relative w-24 h-24 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full flex items-center justify-center shadow-2xl shadow-emerald-500/30"
+              >
+                <PartyPopper className="w-12 h-12 text-white" />
+              </motion.div>
+            </motion.div>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button
-              size="lg"
-              onClick={() => window.open(data.deploymentUrl, '_blank')}
+            <motion.h3
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="text-3xl font-bold text-slate-900 mb-2"
             >
-              <ExternalLink className="w-5 h-5 mr-2" />
-              Visit Your Website
-            </Button>
-            <Button variant="outline" size="lg">
-              <Sparkles className="w-5 h-5 mr-2" />
-              Create Another Site
-            </Button>
-          </div>
+              {data.businessName} is Live!
+            </motion.h3>
 
-          {data.domainOption === 'existing' && data.existingDomain && (
-            <div className="mt-8 p-4 bg-warning/10 rounded-xl border border-warning/20 text-left max-w-md mx-auto">
-              <h4 className="font-semibold text-foreground mb-2 flex items-center gap-2">
-                <Globe className="w-5 h-5 text-warning" />
-                Connect Your Domain
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Update your DNS settings to point <strong>{data.existingDomain}</strong> to your new site:
-              </p>
-              <div className="bg-white rounded-lg p-3 font-mono text-xs space-y-1">
-                <div>A @ → 76.76.21.21</div>
-                <div>CNAME www → cname.vercel-dns.com</div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="flex items-center justify-center gap-2 mb-8"
+            >
+              <div className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-xl">
+                <Globe className="w-4 h-4 text-indigo-500" />
+                <a
+                  href={data.deploymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                >
+                  {data.deploymentUrl}
+                </a>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={copyUrl}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-slate-400" />
+                  )}
+                </motion.button>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="flex flex-col sm:flex-row gap-4 justify-center"
+            >
+              <Button
+                size="lg"
+                variant="gradient"
+                onClick={() => window.open(data.deploymentUrl, '_blank')}
+              >
+                <ExternalLink className="w-5 h-5" />
+                Visit Your Website
+              </Button>
+              <Button variant="outline" size="lg">
+                <Zap className="w-5 h-5" />
+                Create Another Site
+              </Button>
+            </motion.div>
+
+            {data.domainOption === 'existing' && data.existingDomain && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="mt-8 p-6 bg-amber-50 rounded-2xl border-2 border-amber-200 text-left max-w-md mx-auto"
+              >
+                <h4 className="font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-amber-500" />
+                  Connect Your Domain
+                </h4>
+                <p className="text-sm text-slate-600 mb-4">
+                  Update your DNS settings to point <strong>{data.existingDomain}</strong> to your new site:
+                </p>
+                <div className="bg-white rounded-xl p-4 font-mono text-sm space-y-2 border border-amber-100">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">A</span>
+                    <span className="text-slate-900">@ → 76.76.21.21</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">CNAME</span>
+                    <span className="text-slate-900">www → cname.vercel-dns.com</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Error State */}
-      {hasError && (
-        <div className="text-center py-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-error/10 rounded-full mb-4">
-            <AlertCircle className="w-10 h-10 text-error" />
-          </div>
+      <AnimatePresence>
+        {hasError && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="text-center py-8"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-4"
+            >
+              <AlertCircle className="w-10 h-10 text-red-500" />
+            </motion.div>
 
-          <h3 className="text-xl font-bold text-foreground mb-2">
-            Something went wrong
-          </h3>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">
+              Something went wrong
+            </h3>
 
-          <p className="text-muted-foreground mb-6">{data.deploymentError}</p>
+            <p className="text-slate-500 mb-6">{data.deploymentError}</p>
 
-          <Button onClick={startDeployment}>Try Again</Button>
-        </div>
-      )}
+            <Button variant="primary">Try Again</Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Back button only if not complete */}
       {!isComplete && !isDeploying && (
         <div className="flex justify-start mt-8">
           <Button variant="ghost" onClick={onBack}>
-            <ArrowLeft className="w-5 h-5 mr-2" />
+            <ArrowLeft className="w-5 h-5" />
             Back
           </Button>
         </div>
